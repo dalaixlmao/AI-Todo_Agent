@@ -7,6 +7,8 @@ class userController {
   private __repo: repository;
   constructor() {
     this.__repo = repository.getInstance();
+    this.createUser = this.createUser.bind(this);
+    this.signIn = this.signIn.bind(this);
   }
 
   async createUser(req: Request, res: Response) {
@@ -19,7 +21,7 @@ class userController {
         hashedPassword
       );
       const id = user.id;
-      const token = jwt.sign({ id }, process.env.SECRET || "");
+      const token = "Bearer "+jwt.sign({ id }, process.env.SECRET || "");
       res.status(200).json({ message: "User signed up successfully", token });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -37,7 +39,7 @@ class userController {
         return;
       }
       const id = user?.id;
-      const token = jwt.sign({ id }, process.env.SECRET || "");
+      const token = "Bearer "+jwt.sign({ id }, process.env.SECRET || "");
       res.status(200).json({ message: "User signed in successfully", token });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

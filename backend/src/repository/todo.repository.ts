@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import createTodo from "../types";
 
-
 class todoRepo {
   private __db: PrismaClient;
 
@@ -10,6 +9,8 @@ class todoRepo {
     this.createTodo = this.createTodo.bind(this);
     this.getTodoById = this.getTodoById.bind(this);
     this.getUsersTodo = this.getUsersTodo.bind(this);
+    this.searchTodo = this.searchTodo.bind(this);
+    this.deleteTodoById = this.deleteTodoById.bind(this);
   }
 
   async createTodo(data: createTodo, userId: number) {
@@ -33,6 +34,29 @@ class todoRepo {
         userId,
       },
     });
+  }
+
+  async searchTodo(key: string) {
+    return await this.__db.todo.findMany({
+      where: {
+        OR: [
+          {
+            title: {
+              contains: key,
+            },
+          },
+          {
+            description: {
+              contains: key,
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  async deleteTodoById(id: number) {
+    return await this.__db.todo.delete({ where: { id } });
   }
 }
 

@@ -1,0 +1,5 @@
+agent/node_modules
+agent/.env
+
+backend/node_modules
+backend/.env

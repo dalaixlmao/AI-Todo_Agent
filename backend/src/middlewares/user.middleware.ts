@@ -20,14 +20,24 @@ class userMiddleware {
 
   signupValidation(req: Request, res: Response, next: NextFunction) {
     const data = req.body;
+    console.log(data);
     const check = userSignupSchema.safeParse(data);
-    if (check.success) next();
+    console.log(check.success ? "Passed validation" : "Failed validation");
+    if (check.success) {
+      next();
+      return;
+    }
     res.status(422).json({ message: "Wrong Inputs" });
   }
   signinValidation(req: Request, res: Response, next: NextFunction) {
     const data = req.body;
     const check = userSigninSchema.safeParse(data);
-    if (check.success) next();
+
+    if (check.success) {
+      next();
+      return;
+    }
+
     res.status(422).json({ message: "Wrong Inputs" });
   }
 
@@ -35,7 +45,9 @@ class userMiddleware {
     const { email } = req.body;
     const user = await this.__repo.__user.getUserByEmail(email);
     if (!user) {
+      console.log("Here right now, user not found");
       next();
+      return;
     } else {
       res
         .status(500)

@@ -26,12 +26,21 @@ class todoRoute {
       this.__todo_middleware.authenticate,
       this.__todo_controller.getUserTodos
     );
+    this.__router.get(
+      "/search",
+      this.__todo_middleware.authenticate,
+      this.__todo_controller.searchTodo
+    );
+    this.__router.delete(
+      "/remove",
+      this.__todo_middleware.authenticate,
+      this.__todo_controller.deleteTodo
+    );
   }
 
-  getRouter(){
+  getRouter() {
     return this.__router;
   }
 }
-
 
 export default todoRoute;
