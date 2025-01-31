@@ -1,252 +1,136 @@
 import dotenv from "dotenv";
-import OpenAI from "openai";
-import axios from "axios";
-import { title } from "process";
-import { error } from "console";
-import { ChatCompletionMessageParam } from "openai/resources";
-import { Key } from "readline";
-import { Socket } from "socket.io";
 import socketIO from "socket.io";
+import { GenerativeModel, GoogleGenerativeAI } from "@google/generative-ai";
+import { ChatCompletionMessageParam } from "openai/resources";
+import repository from "../repository/repository";
 
 dotenv.config();
 
-type ActionFunction =
-  | "getTodoById"
-  | "createTodo"
-  | "getUserTodos"
-  | "searchTodo"
-  | "deleteTodoById";
-
-interface GetTodoAction {
-  type: "actions";
-  function: "getTodoById";
-  input: { id: number };
-}
-
-interface CreateTodoAction {
-  type: "actions";
-  function: "createTodo";
-  input: { data: { title: string; description: string; reminderTime?: Date } };
-}
-
-interface GetUserTodosAction {
-  type: "actions";
-  function: "getUserTodos";
-  input: Record<string, never>;
-}
-
-interface SearchTodoAction {
-  type: "actions";
-  function: "searchTodo";
-  input: { key: string };
-}
-
-interface DeleteTodoAction {
-  type: "actions";
-  function: "deleteTodoById";
-  input: { id: number };
-}
-
-interface OutputAction {
-  type: "output";
-  output: string;
-}
-
-// Union of all possible actions
-type Action =
-  | GetTodoAction
-  | CreateTodoAction
-  | GetUserTodosAction
-  | SearchTodoAction
-  | DeleteTodoAction
-  | OutputAction;
+/*
+Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzM4MjUxOTA0fQ.7-UkxYLIqoh0yE7OM0bo6CE1fprc1Mt7PVi1qX0gqao
+Hi, I am getting bored and I feel I should go to watch movie this weekend.
+ Oh no, I forgot I have gaming night with my friends on the weekend.
+*/
 
 class Agent {
   private __userToken: string;
-  private __backend_url: string;
-  private __tools;
-  private __agent: OpenAI;
+  private __tools: Record<string, Function>;
+  private __agent: GoogleGenerativeAI;
   private __messages: ChatCompletionMessageParam[];
   private __socket: socketIO.Socket;
+  private __model: GenerativeModel;
+  private __repo: repository;
 
   constructor(token: string, socket: socketIO.Socket) {
     this.__socket = socket;
-    this.__agent = new OpenAI({ apiKey: process.env.OPEN_AI_KEY || "" });
-    this.__userToken = token;
-    this.__backend_url =
-      process.env.BACKEND_URL || "http://localhost:3000/api/v1/todo";
+    this.__agent = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+    this.__model = this.__agent.getGenerativeModel({
+      model: "gemini-1.5-flash",
+    });
 
-    this.getTodoById = this.getTodoById.bind(this);
-    this.createTodo = this.createTodo.bind(this);
-    this.getUserTodos = this.getUserTodos.bind(this);
-    this.searchTodo = this.searchTodo.bind(this);
-    this.deleteTodoById = this.deleteTodoById.bind(this);
+    this.__userToken = token;
+    this.__repo = new repository(this.__userToken);
 
     this.__tools = {
-      getTodoById: this.getTodoById,
-      createTodo: this.createTodo,
-      getUserTodos: this.getUserTodos,
-      searchTodo: this.searchTodo,
-      deleteTodoById: this.deleteTodoById,
+      getTodoById: this.__repo.getTodoById,
+      createTodo: this.__repo.createTodo,
+      getUserTodos: this.__repo.getUserTodos,
+      searchTodo: this.__repo.searchTodo,
+      deleteTodoById: this.__repo.deleteTodoById,
     };
 
     this.__messages = [{ role: "system", content: this.__getPrompt() }];
 
-    this.__socket.on("query", (query) => {
-      this.input(query);
-    });
+    this.__socket.on("query", (query) => this.input(query));
   }
 
-  async createTodo(data: {
-    title: string;
-    description: string;
-    reminderTime?: Date;
-  }) {
+  private parseResponse(response: string) {
     try {
-      const res = await axios.post(`${this.__backend_url}/create`, {
-        title: data.title,
-        description: data.description,
-        reminderTime: data.reminderTime,
-      });
-      return res.data.id;
-    } catch (e: any) {
-      throw error(e.message);
+      const matches = response.match(/\{[^{}]*\}/g);
+      if (!matches) return [];
+
+      return matches.map((jsonStr) => JSON.parse(jsonStr));
+    } catch (error) {
+      console.error("Error parsing AI response:", error);
+      return [];
     }
   }
 
-  async getUserTodos() {
-    try {
-      const res = await axios.get(`${this.__backend_url}/todos`, {
-        headers: {
-          Authorization: this.__userToken,
-        },
-      });
-      return res.data.todos;
-    } catch (e: any) {
-      throw error(e.message);
-    }
-  }
+  private async executeFunction(fnName: string, input?: Record<string, any>) {
+    if (!(fnName in this.__tools))
+      throw new Error(`Invalid function: ${fnName}`);
 
-  async getTodoById(id: number) {
-    try {
-      const res = await axios.get(`${this.__backend_url}/`, {
-        headers: {
-          Authorization: this.__userToken,
-        },
-        params: {
-          id,
-        },
-      });
-      return res.data.todo;
-    } catch (e: any) {
-      throw error(e.message);
-    }
-  }
-
-  async deleteTodoById(id: number) {
-    try {
-      const res = await axios.delete(`${this.__backend_url}/delete`, {
-        headers: {
-          Authorization: this.__userToken,
-        },
-        params: {
-          id,
-        },
-      });
-      return res.data.message;
-    } catch (e: any) {
-      throw error(e.message);
-    }
-  }
-
-  async searchTodo(key: string) {
-    try {
-      const res = await axios.get(`${this.__backend_url}/`, {
-        headers: {
-          Authorization: this.__userToken,
-        },
-        params: {
-          key,
-        },
-      });
-      return res.data.todos;
-    } catch (e: any) {
-      throw error(e.message);
-    }
+    return await this.__tools[fnName](...(input ? Object.values(input) : []));
   }
 
   async input(query: string) {
-    const userMessage = {
-      type: "user",
-      user: query,
-    };
-    this.__messages.push({
-      role: "user",
-      content: JSON.stringify(userMessage),
-    });
+    this.__messages.push(
+      {
+        role: "system",
+        content: JSON.stringify({ type: "system", system: this.__getPrompt() }),
+      },
+      { role: "user", content: JSON.stringify({ type: "user", user: query }) }
+    );
 
     while (true) {
-      const chat = await this.__agent.chat.completions.create({
-        model: "gpt-3",
-        messages: this.__messages,
-        response_format: { type: "json_object" },
-      });
-      const result = chat.choices[0].message.content;
-      this.__messages.push({ role: "assistant", content: result });
+      let flag = 0;
+      try {
+        const chat = await this.__model.generateContent(
+          JSON.stringify(this.__messages)
+        );
+        const responses = this.parseResponse(chat.response.text());
 
-      const action = JSON.parse(result || "") as Action;
+        for (const res of responses) {
+          console.log(
+            "\n-----------------------------------------\n",
+            res,
+            "\n-----------------------------------------\n"
+          );
 
-      if (action.type === "output") {
-        this.output(action.output);
-        break;
-      } else if (action.type === "actions") {
-        const validFunctions = [
-          "getTodoById",
-          "createTodo",
-          "getUserTodos",
-          "searchTodo",
-          "deleteTodoById",
-        ] as const;
-
-        let response;
-        if (validFunctions.includes(action.function)) {
-          switch (action.function) {
-            case "getTodoById": {
-              response = await this.__tools.getTodoById(action.input.id);
-              break;
-            }
-            case "createTodo": {
-              response = await this.__tools.createTodo(action.input.data);
-              break;
-            }
-            case "getUserTodos": {
-              response = await this.__tools.getUserTodos();
-              break;
-            }
-            case "searchTodo": {
-              response = await this.__tools.searchTodo(action.input.key);
-              break;
-            }
-            case "deleteTodoById": {
-              response = await this.__tools.deleteTodoById(action.input.id);
-              break;
-            }
+          if (res.type === "output" && res.output) {
+            this.output(res.output);
+            flag++;
+            break;
+          } else if (res.type === "actions" && res.function) {
+            const result = await this.executeFunction(res.function, res.input);
+            this.__messages.push({
+              role: "system",
+              content: JSON.stringify({ res }),
+            });
+          } else if (
+            res.type === "plan" ||
+            res.type === "user" ||
+            res.type === "observation"
+          ) {
+            this.__messages.push({
+              role: "assistant",
+              content: JSON.stringify({ res }),
+            });
+          } else {
+            this.__messages.push({
+              role: "system",
+              content: this.__getPrompt(),
+            });
           }
-          this.output(response);
-        } else {
-          throw new Error("Invalid response by chatgpt");
         }
+        this.__messages.push({
+          role: "system",
+          content: this.__getPrompt(),
+        });
+
+        if (responses.some((res) => res.type === "output") || flag > 0) break;
+      } catch (error) {
+        console.error("Error processing AI response:", error);
+        break;
       }
     }
   }
 
-  output(message: any) {
-    this.__socket.emit("ack", message, () => {
-      console.log(message);
-    });
+  private output(message: string) {
+    this.__socket.emit("ack", message, () => console.log("Sent:", message));
   }
 
-  private __getPrompt() {
+  private __getPrompt(): string {
     return `
 You are an AI TO-Do List Assistant with START, PLAN, ACTION, Observation and Outut State.
 Wait for the user prompt and first PLAN using available tools
@@ -261,7 +145,6 @@ Todo DB Schema:
 - title String
 - description String
 - created_at DateTime @default(now())
-- remiderTime DateTime?
 - completed Boolean @default(false)
 - userId Int
 - user user @relation(fields: [userId], references: [id])
@@ -283,8 +166,7 @@ START
 {"type": "user", "user":"I want to shop for chocolates."}
 {"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
 {"type": "action", "function" : "createTodo", "input":{"title":"Chocolates", "description": "Buy chocolates from groceries."}}
-{"type": "observation", "observation": "New todo created!"}
-`;
+{"type": "observation", "observation": "New todo created!"} `;
   }
 }
 
