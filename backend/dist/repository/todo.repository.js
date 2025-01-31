@@ -8,6 +8,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 class todoRepo {
     constructor(client) {
@@ -17,6 +28,7 @@ class todoRepo {
         this.getUsersTodo = this.getUsersTodo.bind(this);
         this.searchTodo = this.searchTodo.bind(this);
         this.deleteTodoById = this.deleteTodoById.bind(this);
+        this.updateTodoById = this.updateTodoById.bind(this);
     }
     createTodo(data, userId) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -67,6 +79,20 @@ class todoRepo {
     deleteTodoById(id) {
         return __awaiter(this, void 0, void 0, function* () {
             return yield this.__db.todo.delete({ where: { id } });
+        });
+    }
+    updateTodoById(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const newData = {
+                id: parseInt(data.id),
+            };
+            var { id } = data, updateData = __rest(data, ["id"]);
+            return yield this.__db.todo.update({
+                where: {
+                    id: parseInt(data.id),
+                },
+                data: updateData,
+            });
         });
     }
 }

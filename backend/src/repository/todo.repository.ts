@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import createTodo from "../types";
 
 class todoRepo {
@@ -11,6 +11,7 @@ class todoRepo {
     this.getUsersTodo = this.getUsersTodo.bind(this);
     this.searchTodo = this.searchTodo.bind(this);
     this.deleteTodoById = this.deleteTodoById.bind(this);
+    this.updateTodoById = this.updateTodoById.bind(this);
   }
 
   async createTodo(data: createTodo, userId: number) {
@@ -57,6 +58,24 @@ class todoRepo {
 
   async deleteTodoById(id: number) {
     return await this.__db.todo.delete({ where: { id } });
+  }
+
+  async updateTodoById(data: {
+    id: string;
+    title?: string;
+    description?: string;
+    reminderTime?: string;
+  }) {
+    const newData = {
+      id: parseInt(data.id),
+    }
+    var { id, ...updateData } = data;
+    return await this.__db.todo.update({
+      where: {
+        id: parseInt(data.id),
+      },
+      data: updateData,
+    });
   }
 }
 
