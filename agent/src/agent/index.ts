@@ -187,7 +187,7 @@ class Agent {
 
     while (true) {
       const chat = await this.__agent.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-3",
         messages: this.__messages,
         response_format: { type: "json_object" },
       });

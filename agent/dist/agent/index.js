@@ -13,17 +13,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
+const openai_1 = __importDefault(require("openai"));
 const axios_1 = __importDefault(require("axios"));
 const console_1 = require("console");
 dotenv_1.default.config();
 class Agent {
     constructor(token, socket) {
         this.__socket = socket;
+        this.__agent = new openai_1.default({ apiKey: process.env.OPEN_AI_KEY || "" });
         this.__userToken = token;
-        this.__backend_url = process.env.BACKEND_URL || "http://localhost:3000/api/v1/todo";
-        this.__huggingface_url = process.env.HUGGINGFACE_URL || "https://api-inference.huggingface.co/models/";
-        this.__huggingface_token = process.env.HUGGINGFACE_API_KEY || "";
-        // Bind methods
+        this.__backend_url =
+            process.env.BACKEND_URL || "http://localhost:3000/api/v1/todo";
         this.getTodoById = this.getTodoById.bind(this);
         this.createTodo = this.createTodo.bind(this);
         this.getUserTodos = this.getUserTodos.bind(this);
@@ -39,36 +39,6 @@ class Agent {
         this.__messages = [{ role: "system", content: this.__getPrompt() }];
         this.__socket.on("query", (query) => {
             this.input(query);
-        });
-    }
-    __queryHuggingFace(messages) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const response = yield axios_1.default.post(`${this.__huggingface_url}meta-llama/Llama-2-70b-chat-hf`, {
-                    inputs: messages.map(msg => `${msg.role}: ${msg.content}`).join('\n'),
-                    parameters: {
-                        max_length: 1000,
-                        temperature: 0.7,
-                        top_p: 0.95,
-                        return_full_text: false
-                    }
-                }, {
-                    headers: {
-                        'Authorization': `Bearer ${this.__huggingface_token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                // Parse the response to match our Action type
-                try {
-                    return JSON.parse(response.data[0].generated_text);
-                }
-                catch (e) {
-                    throw new Error("Invalid response format from model");
-                }
-            }
-            catch (e) {
-                throw new Error(`Hugging Face API error: ${e.message}`);
-            }
         });
     }
     createTodo(data) {
@@ -166,11 +136,14 @@ class Agent {
                 content: JSON.stringify(userMessage),
             });
             while (true) {
-                const action = yield this.__queryHuggingFace(this.__messages);
-                this.__messages.push({
-                    role: "assistant",
-                    content: JSON.stringify(action)
+                const chat = yield this.__agent.chat.completions.create({
+                    model: "gpt-3",
+                    messages: this.__messages,
+                    response_format: { type: "json_object" },
                 });
+                const result = chat.choices[0].message.content;
+                this.__messages.push({ role: "assistant", content: result });
+                const action = JSON.parse(result || "");
                 if (action.type === "output") {
                     this.output(action.output);
                     break;
@@ -210,7 +183,7 @@ class Agent {
                         this.output(response);
                     }
                     else {
-                        throw new Error("Invalid response from model");
+                        throw new Error("Invalid response by chatgpt");
                     }
                 }
             }
@@ -222,7 +195,8 @@ class Agent {
         });
     }
     __getPrompt() {
-        return `You are an AI TO-Do List Assistant with START, PLAN, ACTION, Observation and Output State.
+        return `
+You are an AI TO-Do List Assistant with START, PLAN, ACTION, Observation and Outut State.
 Wait for the user prompt and first PLAN using available tools
 After planning, take the action with appropriate tools and wait for Observation based on Action.
 Once you get the observations, return the AI response based on START prompt and observation.
@@ -247,7 +221,18 @@ Available Tools:
 - getTodoById(id: number): Returns a todo with given id, else throws an error.
 - getUserTodos(): Return all the todos that user has.
 - searchTodo(key:string): Searches for all todos which contains specific key in title or description.
-- deleteTodoById(id: number): Deletes the todo with id = id, if it is done.`;
+- deleteTodoById(id: number): Deletes the todo with id = id, if it is done. 
+
+Example:
+START
+{"type": "user", "user":"Add a task for shopping groceries."}
+{"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
+{"type" : "output", "output": "Can you tell me what all items you want me to shop for?" }
+{"type": "user", "user":"I want to shop for chocolates."}
+{"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
+{"type": "action", "function" : "createTodo", "input":{"title":"Chocolates", "description": "Buy chocolates from groceries."}}
+{"type": "observation", "observation": "New todo created!"}
+`;
     }
 }
 exports.default = Agent;
