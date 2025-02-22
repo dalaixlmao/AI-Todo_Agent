@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 const generative_ai_1 = require("@google/generative-ai");
 const repository_1 = __importDefault(require("../repository/repository"));
+const console_1 = require("console");
 dotenv_1.default.config();
 /*
 Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzM4MjUxOTA0fQ.7-UkxYLIqoh0yE7OM0bo6CE1fprc1Mt7PVi1qX0gqao
@@ -26,7 +27,7 @@ class Agent {
         this.__socket = socket;
         this.__agent = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
         this.__model = this.__agent.getGenerativeModel({
-            model: "gemini-1.5-flash",
+            model: "gemini-2.0-flash",
         });
         this.__userToken = token;
         this.__repo = new repository_1.default(this.__userToken);
@@ -67,6 +68,7 @@ class Agent {
                 try {
                     const chat = yield this.__model.generateContent(JSON.stringify(this.__messages));
                     const responses = this.parseResponse(chat.response.text());
+                    (0, console_1.log)(responses);
                     for (const res of responses) {
                         console.log("\n-----------------------------------------\n", res, "\n-----------------------------------------\n");
                         if (res.type === "output" && res.output) {
@@ -129,7 +131,7 @@ Available Tools:
 - searchTodo(key:string): Searches for all todos which contains specific key in title or description.
 - deleteTodoById(id: number): Deletes the todo with id = id, if it is done. 
 
-Example:
+✅ Correct Example:
 START
 {"type": "user", "user":"Add a task for shopping groceries."}
 {"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
@@ -137,7 +139,15 @@ START
 {"type": "user", "user":"I want to shop for chocolates."}
 {"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
 {"type": "action", "function" : "createTodo", "input":{"title":"Chocolates", "description": "Buy chocolates from groceries."}}
-{"type": "observation", "observation": "New todo created!"} `;
+{"type": "observation", "observation": "New todo created!"} 
+
+❌ Wrong Example:
+START
+{"title": "I have to add a new todo", "description":"User asked me to add a new todo"}
+
+
+Note: Second example is wrong because the JSON object does not has a key called "type", rather it is having a key called "title" which is not mentioned in the rules. Hence the correct way to perform an operation is by responding with an object with type as action and with function as in what function to apply and it's input type. Follow the above rules for correct input type and functions.
+`;
     }
 }
 exports.default = Agent;

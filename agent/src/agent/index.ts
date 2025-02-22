@@ -3,6 +3,7 @@ import socketIO from "socket.io";
 import { GenerativeModel, GoogleGenerativeAI } from "@google/generative-ai";
 import { ChatCompletionMessageParam } from "openai/resources";
 import repository from "../repository/repository";
+import { log } from "console";
 
 dotenv.config();
 
@@ -16,7 +17,7 @@ class Agent {
   private __userToken: string;
   private __tools: Record<string, Function>;
   private __agent: GoogleGenerativeAI;
-  private __messages: ChatCompletionMessageParam[];
+  private __messages: string[];
   private __socket: socketIO.Socket;
   private __model: GenerativeModel;
   private __repo: repository;
@@ -25,7 +26,7 @@ class Agent {
     this.__socket = socket;
     this.__agent = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
     this.__model = this.__agent.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
     });
 
     this.__userToken = token;
@@ -39,7 +40,7 @@ class Agent {
       deleteTodoById: this.__repo.deleteTodoById,
     };
 
-    this.__messages = [{ role: "system", content: this.__getPrompt() }];
+    this.__messages = [this.__getPrompt()];
 
     this.__socket.on("query", (query) => this.input(query));
   }
@@ -65,11 +66,8 @@ class Agent {
 
   async input(query: string) {
     this.__messages.push(
-      {
-        role: "system",
-        content: JSON.stringify({ type: "system", system: this.__getPrompt() }),
-      },
-      { role: "user", content: JSON.stringify({ type: "user", user: query }) }
+    JSON.stringify({ type: "system", system: this.__getPrompt() }),
+       JSON.stringify({ type: "user", user: query })
     );
 
     while (true) {
@@ -79,7 +77,7 @@ class Agent {
           JSON.stringify(this.__messages)
         );
         const responses = this.parseResponse(chat.response.text());
-
+        log(responses);
         for (const res of responses) {
           console.log(
             "\n-----------------------------------------\n",
@@ -93,30 +91,18 @@ class Agent {
             break;
           } else if (res.type === "actions" && res.function) {
             const result = await this.executeFunction(res.function, res.input);
-            this.__messages.push({
-              role: "system",
-              content: JSON.stringify({ res }),
-            });
+            this.__messages.push(JSON.stringify({ res }));
           } else if (
             res.type === "plan" ||
             res.type === "user" ||
             res.type === "observation"
           ) {
-            this.__messages.push({
-              role: "assistant",
-              content: JSON.stringify({ res }),
-            });
+            this.__messages.push(JSON.stringify({ res }));
           } else {
-            this.__messages.push({
-              role: "system",
-              content: this.__getPrompt(),
-            });
+            this.__messages.push(this.__getPrompt());
           }
         }
-        this.__messages.push({
-          role: "system",
-          content: this.__getPrompt(),
-        });
+        this.__messages.push(this.__getPrompt());
 
         if (responses.some((res) => res.type === "output") || flag > 0) break;
       } catch (error) {
@@ -158,7 +144,7 @@ Available Tools:
 - searchTodo(key:string): Searches for all todos which contains specific key in title or description.
 - deleteTodoById(id: number): Deletes the todo with id = id, if it is done. 
 
-Example:
+✅ Correct Example:
 START
 {"type": "user", "user":"Add a task for shopping groceries."}
 {"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
@@ -166,7 +152,15 @@ START
 {"type": "user", "user":"I want to shop for chocolates."}
 {"type" : "plan", "plan": "I will use createTodo to create a new Todo in DB." }
 {"type": "action", "function" : "createTodo", "input":{"title":"Chocolates", "description": "Buy chocolates from groceries."}}
-{"type": "observation", "observation": "New todo created!"} `;
+{"type": "observation", "observation": "New todo created!"} 
+
+❌ Wrong Example:
+START
+{"title": "I have to add a new todo", "description":"User asked me to add a new todo"}
+
+
+Note: Second example is wrong because the JSON object does not has a key called "type", rather it is having a key called "title" which is not mentioned in the rules. Hence the correct way to perform an operation is by responding with an object with type as action and with function as in what function to apply and it's input type. Follow the above rules for correct input type and functions.
+`;
   }
 }
 
